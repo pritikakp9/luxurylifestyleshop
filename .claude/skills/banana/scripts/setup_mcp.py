@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 
 SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+PROJECT_MCP_PATH = Path.cwd() / ".mcp.json"
 MCP_NAME = "nanobanana-mcp"
 MCP_PACKAGE = "@ycse/nanobanana-mcp"
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
@@ -32,6 +33,21 @@ def load_settings() -> dict:
         return json.load(f)
 
 
+def _load_servers(path: Path) -> dict:
+    """Return the mcpServers mapping from a config file, or {} on any problem."""
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    servers = data.get("mcpServers", {})
+    return servers if isinstance(servers, dict) else {}
+
+
 def save_settings(settings: dict) -> None:
     """Save Claude Code settings.json."""
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -41,14 +57,24 @@ def save_settings(settings: dict) -> None:
 
 
 def check_setup() -> bool:
-    """Check if MCP is already configured."""
-    settings = load_settings()
-    servers = settings.get("mcpServers", {})
-    if MCP_NAME in servers:
+    """Check if MCP is configured in project .mcp.json or user settings.json."""
+    sources = [
+        ("project .mcp.json", PROJECT_MCP_PATH),
+        ("user settings.json", SETTINGS_PATH),
+    ]
+    for label, path in sources:
+        servers = _load_servers(path)
+        if MCP_NAME not in servers:
+            continue
         env = servers[MCP_NAME].get("env", {})
+        if not isinstance(env, dict):
+            env = {}
         key = env.get("GOOGLE_AI_API_KEY", "")
+        if not key or key.startswith("${"):
+            # Placeholder or unset -- resolve from the actual environment.
+            key = os.environ.get("GOOGLE_AI_API_KEY", "")
         masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "(not set)"
-        print(f"MCP server '{MCP_NAME}' is configured.")
+        print(f"MCP server '{MCP_NAME}' is configured ({label}).")
         print(f"  Package: {MCP_PACKAGE}")
         print(f"  API Key: {masked}")
         print(f"  Model:   {env.get('NANOBANANA_MODEL', DEFAULT_MODEL)}")

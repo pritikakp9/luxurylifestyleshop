@@ -32,6 +32,24 @@ DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
 DEFAULT_RESOLUTION = "2K"  # Match generate.py and the skill's documented default
 DEFAULT_RATIO = "1:1"
 
+# Per-model resolution support (see references/gemini-models.md). 512/2K/4K are
+# Nano Banana 2 (3.1) only; gemini-2.5-flash-image tops out at 1K.
+MODEL_RESOLUTIONS = {
+    "gemini-3.1-flash-image-preview": {"512", "1K", "2K", "4K"},
+    "gemini-2.5-flash-image": {"1K"},
+}
+
+
+def default_resolution_for(model):
+    """Default resolution for a model -- 2K where supported, else its best tier."""
+    allowed = MODEL_RESOLUTIONS.get(model)
+    if allowed is None or DEFAULT_RESOLUTION in allowed:
+        return DEFAULT_RESOLUTION
+    for tier in ("4K", "2K", "1K", "512"):
+        if tier in allowed:
+            return tier
+    return DEFAULT_RESOLUTION
+
 
 def estimate_cost(model, resolution):
     """Estimate cost for a single image."""
@@ -64,12 +82,19 @@ def main():
                     errors.append(f"Row {i}: missing prompt")
                     continue
 
+                model = row.get("model", "").strip() or DEFAULT_MODEL
+                resolution = row.get("resolution", "").strip() or default_resolution_for(model)
+                allowed = MODEL_RESOLUTIONS.get(model)
+                if allowed is not None and resolution not in allowed:
+                    errors.append(f"Row {i}: resolution '{resolution}' not supported by model '{model}' (supported: {sorted(allowed)})")
+                    continue
+
                 rows.append({
                     "row": i,
                     "prompt": prompt,
                     "ratio": row.get("ratio", "").strip() or DEFAULT_RATIO,
-                    "resolution": row.get("resolution", "").strip() or DEFAULT_RESOLUTION,
-                    "model": row.get("model", "").strip() or DEFAULT_MODEL,
+                    "resolution": resolution,
+                    "model": model,
                     "preset": row.get("preset", "").strip() or None,
                 })
     except (csv.Error, UnicodeDecodeError) as e:
