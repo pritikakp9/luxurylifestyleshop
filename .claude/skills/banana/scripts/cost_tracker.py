@@ -37,12 +37,26 @@ PRICING = {
 BATCH_DISCOUNT = 0.5
 
 
+def _new_ledger():
+    """Return a fresh, empty ledger."""
+    return {"total_cost": 0.0, "total_images": 0, "entries": [], "daily": {}}
+
+
 def _load_ledger():
-    """Load the cost ledger from disk."""
+    """Load the cost ledger from disk, tolerating missing keys or corruption."""
     if not LEDGER_PATH.exists():
-        return {"total_cost": 0.0, "total_images": 0, "entries": [], "daily": {}}
-    with open(LEDGER_PATH, "r") as f:
-        return json.load(f)
+        return _new_ledger()
+    try:
+        with open(LEDGER_PATH, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return _new_ledger()
+    if not isinstance(data, dict):
+        return _new_ledger()
+    # Backfill any expected keys that may be missing from an older/partial file.
+    ledger = _new_ledger()
+    ledger.update(data)
+    return ledger
 
 
 def _save_ledger(ledger):

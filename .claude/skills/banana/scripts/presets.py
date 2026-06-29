@@ -78,8 +78,8 @@ def cmd_create(args):
     """Create a new preset."""
     _ensure_dir()
     path = _preset_path(args.name)
-    if path.exists():
-        print(f"Error: Preset '{args.name}' already exists. Use a different name.", file=sys.stderr)
+    if path.exists() and not args.force:
+        print(f"Error: Preset '{args.name}' already exists. Use --force to overwrite.", file=sys.stderr)
         sys.exit(1)
 
     colors = [c.strip() for c in args.colors.split(",")] if args.colors else []

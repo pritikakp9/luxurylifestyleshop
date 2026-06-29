@@ -29,7 +29,7 @@ PRICING = {
     "gemini-2.5-flash-image": {"512": 0.020, "1K": 0.039},
 }
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
-DEFAULT_RESOLUTION = "1K"
+DEFAULT_RESOLUTION = "2K"  # Match generate.py and the skill's documented default
 DEFAULT_RATIO = "1:1"
 
 

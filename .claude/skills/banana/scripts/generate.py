@@ -29,6 +29,13 @@ VALID_RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2",
                 "4:5", "5:4", "1:4", "4:1", "1:8", "8:1", "21:9"}
 VALID_RESOLUTIONS = {"512", "1K", "2K", "4K"}
 
+# Per-model resolution support (see references/gemini-models.md). 512/2K/4K are
+# Nano Banana 2 (3.1) only; gemini-2.5-flash-image tops out at 1K.
+MODEL_RESOLUTIONS = {
+    "gemini-3.1-flash-image-preview": {"512", "1K", "2K", "4K"},
+    "gemini-2.5-flash-image": {"1K"},
+}
+
 
 def generate_image(prompt, model, aspect_ratio, resolution, api_key,
                    thinking_level=None, image_only=False):
@@ -145,6 +152,11 @@ def main():
 
     if args.resolution not in VALID_RESOLUTIONS:
         print(json.dumps({"error": True, "message": f"Invalid resolution '{args.resolution}'. Valid: {sorted(VALID_RESOLUTIONS)}"}))
+        sys.exit(1)
+
+    allowed = MODEL_RESOLUTIONS.get(args.model)
+    if allowed is not None and args.resolution not in allowed:
+        print(json.dumps({"error": True, "message": f"Resolution '{args.resolution}' is not supported by model '{args.model}'. Supported: {sorted(allowed)}"}))
         sys.exit(1)
 
     api_key = args.api_key or os.environ.get("GOOGLE_AI_API_KEY") or os.environ.get("GOOGLE_API_KEY")

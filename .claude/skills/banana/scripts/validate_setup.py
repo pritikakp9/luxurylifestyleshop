@@ -2,9 +2,13 @@
 """
 Validate that the Banana Claude MCP server is properly configured.
 
+Recognizes both supported setups:
+  1. User scope    -- ~/.claude/settings.json  (written by setup_mcp.py)
+  2. Project scope -- ./.mcp.json               (committed, key via env var)
+
 Checks:
-1. Claude Code settings.json has the MCP entry
-2. API key is present
+1. An MCP entry for nanobanana-mcp exists in one of those configs
+2. An API key is resolvable (literal in config, or GOOGLE_AI_API_KEY env)
 3. Node.js/npx is available
 4. Output directory exists or can be created
 
@@ -13,11 +17,13 @@ Usage:
 """
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 
-SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+USER_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+PROJECT_MCP_PATH = Path.cwd() / ".mcp.json"
 MCP_NAME = "nanobanana-mcp"
 OUTPUT_DIR = Path.home() / "Documents" / "nanobanana_generated"
 
@@ -31,65 +37,84 @@ def check(label: str, passed: bool, detail: str = "") -> bool:
     return passed
 
 
+def _load_servers(path: Path) -> dict:
+    """Return the mcpServers mapping from a config file, or {} on any problem."""
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    servers = data.get("mcpServers", {})
+    return servers if isinstance(servers, dict) else {}
+
+
+def _resolve_api_key(env: dict) -> str:
+    """Resolve the API key from an MCP env block, expanding ${GOOGLE_AI_API_KEY}."""
+    raw = env.get("GOOGLE_AI_API_KEY", "")
+    if not raw or raw.startswith("${"):
+        # Placeholder or unset -- fall back to the actual environment variable.
+        return os.environ.get("GOOGLE_AI_API_KEY", "")
+    return raw
+
+
 def main() -> int:
     print("Banana Claude -- Setup Validation")
     print("=" * 40)
     results = []
 
-    # 1. Settings file exists
+    # 1. Locate the MCP entry in either supported config.
+    sources = [
+        ("project .mcp.json", PROJECT_MCP_PATH),
+        ("user settings.json", USER_SETTINGS_PATH),
+    ]
+    mcp = None
+    found_in = None
+    for label, path in sources:
+        servers = _load_servers(path)
+        if MCP_NAME in servers:
+            mcp = servers[MCP_NAME]
+            found_in = f"{label} ({path})"
+            break
+
     results.append(check(
-        "Claude Code settings.json exists",
-        SETTINGS_PATH.exists(),
-        str(SETTINGS_PATH),
+        f"MCP server '{MCP_NAME}' configured",
+        mcp is not None,
+        found_in or f"not found in {PROJECT_MCP_PATH} or {USER_SETTINGS_PATH}",
     ))
 
-    if not SETTINGS_PATH.exists():
-        print("\nCannot continue without settings.json.")
-        return 1
-
-    # 2. Load and parse settings
-    try:
-        with open(SETTINGS_PATH) as f:
-            settings = json.load(f)
-        results.append(check("settings.json is valid JSON", True))
-    except json.JSONDecodeError as e:
-        results.append(check("settings.json is valid JSON", False, str(e)))
-        return 1
-
-    # 3. MCP entry exists
-    servers = settings.get("mcpServers", {})
-    has_mcp = MCP_NAME in servers
-    results.append(check(f"MCP server '{MCP_NAME}' configured", has_mcp))
-
-    if has_mcp:
-        mcp = servers[MCP_NAME]
-
-        # 4. Command is npx
+    if mcp is not None:
+        # 2. Command is npx
         results.append(check(
             "Command is 'npx'",
             mcp.get("command") == "npx",
             mcp.get("command", "(missing)"),
         ))
 
-        # 5. Package is correct
+        # 3. Package is correct
         args = mcp.get("args", [])
-        has_pkg = "@ycse/nanobanana-mcp" in args
         results.append(check(
             "Package is @ycse/nanobanana-mcp",
-            has_pkg,
+            "@ycse/nanobanana-mcp" in args,
             str(args),
         ))
 
-        # 6. API key present
+        # 4. API key resolvable (literal in config or via env var)
         env = mcp.get("env", {})
-        key = env.get("GOOGLE_AI_API_KEY", "")
+        if not isinstance(env, dict):
+            env = {}
+        key = _resolve_api_key(env)
         results.append(check(
-            "GOOGLE_AI_API_KEY is set",
+            "Google AI API key is resolvable",
             bool(key),
-            f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "(empty or short)",
+            f"{key[:8]}...{key[-4:]}" if len(key) > 12
+            else "(set GOOGLE_AI_API_KEY env var or a literal key in config)",
         ))
 
-        # 7. Model configured
+        # 5. Model configured (optional -- package has a default)
         model = env.get("NANOBANANA_MODEL", "")
         results.append(check(
             "NANOBANANA_MODEL is set",
@@ -97,15 +122,14 @@ def main() -> int:
             model or "(not set, will use package default)",
         ))
 
-    # 8. Node.js/npx available
-    has_npx = shutil.which("npx") is not None
+    # 6. Node.js/npx available
     results.append(check(
         "npx is available in PATH",
-        has_npx,
+        shutil.which("npx") is not None,
         shutil.which("npx") or "not found",
     ))
 
-    # 9. Output directory
+    # 7. Output directory
     if OUTPUT_DIR.exists():
         results.append(check("Output directory exists", True, str(OUTPUT_DIR)))
     else:
@@ -124,9 +148,8 @@ def main() -> int:
     if passed == total:
         print("Status: Ready to generate images!")
         return 0
-    else:
-        print("Status: Some checks failed. Fix the issues above.")
-        return 1
+    print("Status: Some checks failed. Fix the issues above.")
+    return 1
 
 
 if __name__ == "__main__":
