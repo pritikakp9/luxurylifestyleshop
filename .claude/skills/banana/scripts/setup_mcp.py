@@ -19,7 +19,19 @@ import os
 from pathlib import Path
 
 SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
-PROJECT_MCP_PATH = Path.cwd() / ".mcp.json"
+def _find_project_mcp() -> Path:
+    """Locate the project .mcp.json by walking up from this script's directory,
+    then from the current working directory. Falls back to cwd/.mcp.json."""
+    starts = [Path(__file__).resolve().parent, Path.cwd().resolve()]
+    for start in starts:
+        for parent in [start, *start.parents]:
+            candidate = parent / ".mcp.json"
+            if candidate.exists():
+                return candidate
+    return Path.cwd() / ".mcp.json"
+
+
+PROJECT_MCP_PATH = _find_project_mcp()
 MCP_NAME = "nanobanana-mcp"
 MCP_PACKAGE = "@ycse/nanobanana-mcp"
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
