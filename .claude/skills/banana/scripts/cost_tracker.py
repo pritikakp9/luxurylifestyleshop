@@ -13,28 +13,16 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Ensure sibling modules import regardless of the caller's cwd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pricing import BATCH_DISCOUNT, VALID_RESOLUTIONS, is_known_model, lookup_cost  # noqa: E402
+
 LEDGER_PATH = Path.home() / ".banana" / "costs.json"
-
-# Cost per image in USD (approximate, based on ~1,290 output tokens)
-PRICING = {
-    "gemini-3.1-flash-image-preview": {
-        "512": 0.020,
-        "1K": 0.039,
-        "2K": 0.078,
-        "4K": 0.156,
-    },
-    "gemini-2.5-flash-image": {
-        "512": 0.020,
-        "1K": 0.039,
-    },
-}
-
-# Batch API gets 50% discount
-BATCH_DISCOUNT = 0.5
 
 
 def _new_ledger():
@@ -67,25 +55,12 @@ def _save_ledger(ledger):
 
 
 def _lookup_cost(model, resolution, batch=False):
-    """Look up cost for a model+resolution combination."""
-    model_pricing = PRICING.get(model)
-    if not model_pricing:
-        # Try partial match
-        for key in PRICING:
-            if key in model or model in key:
-                model_pricing = PRICING[key]
-                break
-    if not model_pricing:
+    """Look up cost for a model+resolution combination (warns on unknowns)."""
+    if not is_known_model(model):
         print(f"Warning: Unknown model '{model}', using 3.1 Flash pricing", file=sys.stderr)
-        model_pricing = PRICING["gemini-3.1-flash-image-preview"]
-
-    valid_resolutions = {"512", "1K", "2K", "4K"}
-    if resolution not in valid_resolutions:
+    if resolution not in VALID_RESOLUTIONS:
         print(f"Warning: Unknown resolution '{resolution}', using 1K pricing", file=sys.stderr)
-    cost = model_pricing.get(resolution, model_pricing.get("1K", 0.039))
-    if batch:
-        cost *= BATCH_DISCOUNT
-    return cost
+    return lookup_cost(model, resolution, batch)
 
 
 def cmd_log(args):

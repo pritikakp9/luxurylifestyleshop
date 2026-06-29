@@ -20,14 +20,14 @@ Example CSV:
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
-# Inline pricing for estimates
-PRICING = {
-    "gemini-3.1-flash-image-preview": {"512": 0.020, "1K": 0.039, "2K": 0.078, "4K": 0.156},
-    "gemini-2.5-flash-image": {"512": 0.020, "1K": 0.039},
-}
+# Ensure sibling modules import regardless of the caller's cwd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pricing import lookup_cost  # noqa: E402
+
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
 DEFAULT_RESOLUTION = "2K"  # Match generate.py and the skill's documented default
 DEFAULT_RATIO = "1:1"
@@ -52,9 +52,8 @@ def default_resolution_for(model):
 
 
 def estimate_cost(model, resolution):
-    """Estimate cost for a single image."""
-    model_pricing = PRICING.get(model, PRICING[DEFAULT_MODEL])
-    return model_pricing.get(resolution, model_pricing.get("1K", 0.039))
+    """Estimate cost for a single image (full price, no batch discount)."""
+    return lookup_cost(model, resolution)
 
 
 def main():

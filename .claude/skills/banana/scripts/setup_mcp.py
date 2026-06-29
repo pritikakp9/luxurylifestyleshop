@@ -96,16 +96,35 @@ def check_setup() -> bool:
 
 
 def remove_mcp() -> None:
-    """Remove MCP configuration."""
+    """Remove MCP configuration from user settings AND the project .mcp.json."""
+    removed_any = False
+
+    # User scope: ~/.claude/settings.json
     settings = load_settings()
     servers = settings.get("mcpServers", {})
     if MCP_NAME in servers:
         del servers[MCP_NAME]
         settings["mcpServers"] = servers
         save_settings(settings)
-        print(f"Removed '{MCP_NAME}' from Claude Code settings.")
-    else:
-        print(f"'{MCP_NAME}' not found in settings.")
+        print(f"Removed '{MCP_NAME}' from user settings ({SETTINGS_PATH}).")
+        removed_any = True
+
+    # Project scope: repo-root .mcp.json
+    if PROJECT_MCP_PATH.exists():
+        try:
+            with open(PROJECT_MCP_PATH, "r") as f:
+                project = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            project = None
+        if isinstance(project, dict) and MCP_NAME in project.get("mcpServers", {}):
+            del project["mcpServers"][MCP_NAME]
+            with open(PROJECT_MCP_PATH, "w") as f:
+                json.dump(project, f, indent=2)
+            print(f"Removed '{MCP_NAME}' from project config ({PROJECT_MCP_PATH}).")
+            removed_any = True
+
+    if not removed_any:
+        print(f"'{MCP_NAME}' not found in user settings or project .mcp.json.")
 
 
 def setup_mcp(api_key: str) -> None:

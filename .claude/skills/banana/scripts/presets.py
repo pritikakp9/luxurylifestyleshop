@@ -25,9 +25,13 @@ def _ensure_dir():
 
 
 def _sanitize_name(name):
-    """Sanitize preset name to prevent path traversal."""
-    # Strip path separators and keep only safe characters
-    safe = re.sub(r'[^a-zA-Z0-9_\-]', '', name)
+    """Sanitize preset name to prevent path traversal.
+
+    Collapse runs of unsafe characters (spaces, punctuation) to a single
+    hyphen rather than deleting them, so distinct inputs like "foo bar" and
+    "foobar" do not silently collide on the same "foobar.json" file.
+    """
+    safe = re.sub(r'[^a-zA-Z0-9_\-]+', '-', name).strip('-_')
     if not safe:
         print("Error: Preset name must contain only letters, numbers, hyphens, and underscores.", file=sys.stderr)
         sys.exit(1)
@@ -77,16 +81,17 @@ def cmd_show(args):
 def cmd_create(args):
     """Create a new preset."""
     _ensure_dir()
+    safe_name = _sanitize_name(args.name)
     path = _preset_path(args.name)
     if path.exists() and not args.force:
-        print(f"Error: Preset '{args.name}' already exists. Use --force to overwrite.", file=sys.stderr)
+        print(f"Error: Preset '{safe_name}' already exists. Use --force to overwrite.", file=sys.stderr)
         sys.exit(1)
 
     colors = [c.strip() for c in args.colors.split(",")] if args.colors else []
 
     preset = {
-        "name": args.name,
-        "description": args.description or f"Custom preset: {args.name}",
+        "name": safe_name,
+        "description": args.description or f"Custom preset: {safe_name}",
         "colors": colors,
         "style": args.style or "",
         "typography": args.typography or "",
